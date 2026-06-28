@@ -76,8 +76,13 @@ prd-baseliner/
 
 ## 3. 里程碑（每个都有可验证产物，逐步逼近真实样例）
 
-### M1 · 确定性抽取先行（为正确性）
+### M1 · 确定性抽取先行（为正确性）　✅ 已完成
 **做**：实现 `extract/` 五工具中样例最缺的三个 + factstore 反填路径。
+
+**实测结果**（commit 绑定，可复现）：`openapi-extractor` 380 接口事实、`schema-dumper` 3 表、
+`enum-scanner` 241 去重枚举 → `route` 组装成 9 个实建层 section（3 数据 + 4 接口 + 2 枚举）。
+接口节含异常事件↔工单交互端点；枚举节含 `workType` 等样例 §7 真实取值。
+`render.py` 落地各 kind 正文范式。测试见 `tests/test_extractors.py`（对真实样例文件）。
 - `openapi-extractor`：读 `docs/product-apis/<svc>/openapi.json` → `Fact(接口)`，evidence 指到 `openapi.json#/paths/...`。
 - `schema-dumper`：解析 `apps/server/prisma/schema.prisma` → `Fact(数据)`（表/字段/类型/主外键/@@map），含计算字段启发式标注。
 - `enum-scanner`：扫 TS `enum` / `z.enum` / Prisma `enum` → `Fact(枚举, values[])`。

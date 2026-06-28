@@ -8,12 +8,14 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from .collect import Collector
 from .drift import DriftDetector
 from .emit import Emitter
 from .extract import ALL_EXTRACTORS
+from .extract._util import resolve_commit
 from .factstore import FactStore
 from .models.schema import Baseline, DocumentHeader
 from .prd_parse import PrdParser
@@ -44,6 +46,10 @@ class Pipeline:
     def run(self) -> None:
         cfg = self.config
 
+        # 解析真实代码根与基线 commit（证据绑定 §2.5）
+        code_root = os.path.abspath(os.path.join(cfg.base_dir, cfg.repo))
+        commit = resolve_commit(code_root, cfg.commit)
+
         # 1. 归集
         collector = Collector()
         prd_docs = collector.collect(cfg.prd_manifest, base_dir=cfg.base_dir)
@@ -52,10 +58,14 @@ class Pipeline:
         for ExtractorCls in ALL_EXTRACTORS:
             extractor = ExtractorCls()
             try:
-                facts = extractor.extract(repo=cfg.repo, commit=cfg.commit, services=cfg.services)
+                facts = extractor.extract(repo=code_root, commit=commit, services=cfg.services)
                 self.factstore.extend(facts)
+                if facts:
+                    print(f"[ok]   {extractor.name}: {len(facts)} facts")
+                else:
+                    print(f"[none] {extractor.name}: 0 facts（事实源缺失或本产线为空集，详见 docstring）")
             except NotImplementedError:
-                # 骨架阶段：抽取器尚未实现，跳过但不静默吞掉（§4 不静默猜测）
+                # 尚未实现的抽取器：跳过但不静默吞掉（§4 不静默猜测）
                 print(f"[skip] {extractor.name} 未实现（里程碑待办）")
 
         # 4. PRD 解析
@@ -83,7 +93,7 @@ class Pipeline:
         # 6/7. 路由+组装（内部按需调用 reasoner）
         header = DocumentHeader(
             product_line=cfg.product_line,
-            baseline=Baseline(commit=cfg.commit),
+            baseline=Baseline(commit=commit),
         )
         assembler = Assembler(self.reasoner)
         try:

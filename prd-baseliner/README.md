@@ -55,6 +55,22 @@ python -m prd_baseliner.cli run --config configs/inputs.yaml
 
 ## 当前状态
 
-骨架阶段：模型层（schema/fact）+ 流水线编排 + 产物序列化 + RAG 入库门已可用并测；
-五个抽取器与 prd_parse/drift/reason/route 为带契约的 stub，按 `docs/IMPLEMENTATION-PLAN.md`
-的 M1→M4 逐步实现。
+**M1 已完成**（确定性抽取 + 实建层组装）。对样例产线实测：
+
+```
+[ok]   openapi-extractor: 380 facts      # docs/product-apis/*/openapi.json → 接口
+[ok]   schema-dumper:       3 facts      # apps/server/prisma/schema.prisma → 数据
+[ok]   enum-scanner:      241 facts      # OpenAPI components enum 去重 → 枚举
+[done] facts=624 sections=9             # 3 数据 + 4 接口 + 2 枚举，全部带 generated_from_commit
+```
+
+产出已直击 RCC 主题：接口节含 `…/list-action-by-exceptionId`（异常事件↔工单交互），
+枚举节含 `workType: PLAN_MAINTENANCE/SUBSCRIBER_REPORT/…`（样例 §7「问题来源」真实取值）。
+
+- ✅ M1：`schema-dumper` / `openapi-extractor` / `enum-scanner` / `route` 实建层反填 / `render` 正文范式
+- ⬜ M2：`prd_parse` 切节 + `drift` 双路 diff + 实建层 vs PRD 对照
+- ⬜ M3：`ClaudeReasoner` 意图层判定（build_status/nature/语义），意图层只标不改
+- ⬜ M4：组装对标样例的完整章节实例 + 两张清单
+
+`dep-extractor`/`topic-scanner` 为 M2（本样例无 Kafka，topic-scanner 预期空集）。
+详见 `docs/IMPLEMENTATION-PLAN.md`。
