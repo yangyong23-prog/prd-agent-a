@@ -40,13 +40,19 @@ class Claim:
     text: str
     kind_guess: Kind | None = None
     evidence: str = ""  # 文件:行
+    level: int = 2  # 标题级别（H1..H4）
+    is_leaf: bool = True  # 是否叶子节（其后无更深一级子标题）；容器章节为 False
     ontology_hits: list[str] = field(default_factory=list)
     placeholders: list[str] = field(default_factory=list)  # 识别出的架构占位名
 
     @property
     def is_empty(self) -> bool:
-        """正文是否实质为空（仅占位语，如'待补充/本章节为空'）。"""
-        body = re.sub(r"[（(].*?[)）]|[\s　]", "", self.text)
+        """正文是否实质为空：去占位语/空白/markdown 分隔线（---、===、表分隔 |--|）后无内容。"""
+        body = "\n".join(
+            ln for ln in self.text.splitlines()
+            if not re.fullmatch(r"[\s　\-=|:]*", ln)  # 丢掉纯分隔线/空行
+        )
+        body = re.sub(r"[（(].*?[)）]|[\s　]", "", body)
         return len(body) == 0 or bool(re.fullmatch(r"(待补充|待完善|本章节待补充|TBD|TODO)?", body))
 
 
@@ -73,13 +79,14 @@ class PrdParser:
         cur_heading = None
         cur_level = 0
         cur_line = 0
+        cur_is_title = False
         buf: list[str] = []
         idx = 0
 
         def flush():
             nonlocal idx
-            if cur_heading is None or cur_level <= 1:
-                return  # 跳过 H1 文档标题，只把 H2-H4 当业务候选节
+            if cur_heading is None or cur_is_title:
+                return  # 跳过文档标题（首个 H1），其余各级标题均作业务候选节
             text = "\n".join(buf).strip()
             heading_clean = re.sub(r"^[\d.、\s]+", "", cur_heading).strip()
             claim = Claim(
@@ -90,11 +97,13 @@ class PrdParser:
                 text=text,
                 kind_guess=_classify(heading_clean, text),
                 evidence=f"{prd_path}:{cur_line}",
+                level=cur_level,
                 placeholders=sorted(set(_PLACEHOLDER_RE.findall(cur_heading + " " + text))),
             )
             claims.append(claim)
             idx += 1
 
+        seen_heading = False
         for i, line in enumerate(lines, 1):
             m = _HEADING_RE.match(line)
             if m:
@@ -102,10 +111,14 @@ class PrdParser:
                 cur_level = len(m.group(1))
                 cur_heading = m.group(2)
                 cur_line = i
+                cur_is_title = (not seen_heading) and cur_level == 1  # 仅首个 H1 视为文档标题
+                seen_heading = True
                 buf = []
             else:
                 if cur_heading is not None:
                     buf.append(line)
         flush()
-        # 跳过 fixture 顶部的说明引用块（首个 H1 通常是标题，无业务 kind）
+        # 叶子判定：若紧邻的下一节标题更深一级，则当前节是容器章节（非叶子）
+        for a, b in zip(claims, claims[1:]):
+            a.is_leaf = not (b.level > a.level)
         return [c for c in claims if c.heading]

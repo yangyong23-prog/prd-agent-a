@@ -49,6 +49,22 @@ def test_history_drift_between_versions():
     assert "问题来源（枚举）" in headings
 
 
+def test_is_empty_treats_markdown_rules_as_empty():
+    # 仿真实 PRD §8.1：标题下只有 '---' 分隔线 → 应判为空节
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "doc.md")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write("# 标题\n\n## 容器章节\n\n### 子节A\n内容\n\n## 与工单的交互消息字段说明（接口）\n\n---\n")
+        claims = PrdParser().parse(p, source_prd="d", source_version="v1")
+    by_h = {c.heading: c for c in claims}
+    iface = by_h["与工单的交互消息字段说明（接口）"]
+    assert iface.is_empty and iface.is_leaf and iface.kind_guess == Kind.接口
+    # '容器章节'后跟更深一级'子节A' → 非叶子（容器）
+    assert by_h["容器章节"].is_leaf is False
+
+
 def test_empty_section_vs_code_drift():
     claims = _parse(V31, "v3.1")
     facts = FactStore()

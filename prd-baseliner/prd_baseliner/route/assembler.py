@@ -72,7 +72,7 @@ class Assembler:
 
         # —— 意图层（M2，正文不改写）——
         for c in claims:
-            if c.kind_guess in _INTENT_KINDS:
+            if c.kind_guess in _INTENT_KINDS and not c.is_empty:  # 跳过空容器章节
                 sections.append(self._intent_section(pl, c))
 
         # —— 漂移挂载 + PM 队列 ——

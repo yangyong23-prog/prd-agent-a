@@ -7,3 +7,7 @@ venv/
 # 产物默认本地，不入库（保留目录占位）
 outputs/*
 !outputs/.gitkeep
+# 真实运行产物与本地私有配置（含真实 PRD 内容，禁止入公开库）
+outputs-*/
+*.local.yaml
+configs/inputs.yaml

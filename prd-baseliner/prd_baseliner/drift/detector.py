@@ -81,9 +81,10 @@ class DriftDetector:
                     )
                 )
 
-        # (b) PRD 实建层节为空，但代码有契约 —— 如样例 §5 接口原文为空
+        # (b) PRD 实建层叶子节为空，但代码有契约 —— 如样例 §5 接口原文为空
+        #     仅叶子节：容器章节（内容在子节）本就该为空，不算漂移
         for c in claims:
-            if c.kind_guess in _BUILD_KINDS and c.is_empty:
+            if c.kind_guess in _BUILD_KINDS and c.is_leaf and c.is_empty:
                 fk = _BUILD_KINDS[c.kind_guess]
                 if facts.by_kind(fk):
                     out.append(
