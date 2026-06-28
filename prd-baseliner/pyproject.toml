@@ -1,0 +1,34 @@
+[project]
+name = "prd-baseliner"
+version = "0.0.1"
+description = "基线 PRD 核实修正 Agent（MVP）—— 代码+历史PRD → 按 schema 填好的基线 PRD 章节实例 + 漂移台账 + PM 队列"
+requires-python = ">=3.11"
+# 骨架阶段零运行时依赖（dataclasses + 标准库 + PyYAML）。
+dependencies = [
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+# 后续里程碑按需启用：
+reason = [
+    "anthropic>=0.40",        # M3 推理层（provider 可换）
+]
+parse = [
+    # "unstructured", "llama-parse",  # M2 PRD/图表解析（§8）
+]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+prd-baseliner = "prd_baseliner.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["prd_baseliner*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
