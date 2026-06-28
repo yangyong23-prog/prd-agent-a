@@ -47,7 +47,12 @@ class Emitter:
         self._dump("sections.yaml", [_to_plain(s) for s in sections])
         self._dump("drift.yaml", [_to_plain(d) for d in drifts])
         self._dump("queue.yaml", [_to_plain(q) for q in queue])
-        # TODO(M4): 同时渲染对标样例的 markdown（章节实例 + 末尾两张清单）。
+        # M4：对标样例的成品 markdown（章节实例 + 就地标记 + 末尾两张清单）
+        from .markdown import render_document
+
+        md = render_document(header, sections, drifts, queue)
+        with open(os.path.join(self.out_dir, "基线PRD章节实例.md"), "w", encoding="utf-8") as f:
+            f.write(md)
 
     def _dump(self, name: str, data: Any) -> None:
         path = os.path.join(self.out_dir, name)

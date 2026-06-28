@@ -70,7 +70,11 @@ python -m prd_baseliner.cli run --config configs/inputs.yaml
 - ✅ M1：`schema-dumper` / `openapi-extractor` / `enum-scanner` / `route` 实建层反填 / `render` 正文范式
 - ✅ M2：`prd_parse` 切节分类 + `drift` 双路 diff（历史漂移 / 文档vs代码）+ 意图层节（不改写）+ PM 队列
 - ✅ M3：推理层判定 `build_status`/`nature`（`HeuristicReasoner` 默认无 key 可跑；`ClaudeReasoner` LLM 路径），意图层只标不改
-- ⬜ M4：组装对标样例的完整章节实例 + 两张清单
+- ✅ M4：`emit` 渲染对标样例的成品 markdown（章节实例 + 就地标记 + 末尾两张清单自动产出）
+
+**四个里程碑全部完成**。产物：`outputs/{document,sections,drift,queue}.yaml` + `基线PRD章节实例.md`。
+成品示例（用占位 fixture 跑，安全无真实 PRD）见 [`examples/output/示例-基线PRD章节实例.md`](examples/output/示例-基线PRD章节实例.md)。
+真实 PRD 实测产出 46 节、106KB 成品，五类标记（需代码·生成/核实、需PM·确认/决策/本体）自动产出。
 
 M3 在真实 PRD 上实测：规则章节含「目前未实现/后续逻辑」→ 自动判 `build_status=规划中` +
 入队「需对照基线代码核实」；「列表字段展示」含「人工修改权重高于计算规则」→ 判 `nature=混合`
