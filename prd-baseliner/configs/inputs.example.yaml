@@ -1,0 +1,32 @@
+# 输入契约（需求文档 §4）。复制为 inputs.yaml 后按真实环境填写。
+# 样例产线 = 本仓库 yushu-app（Fastify/TS/Prisma/MySQL），作为待分析的目标代码。
+inputs:
+  product_line: 异常事件（RCC）
+
+  code:
+    repo: .                              # 本仓库即样例产线代码
+    commit: WORKDIR                      # 基线 commit/tag；MVP 先用工作区。冻结时换成真实 tag
+    services:                            # 本产线涉及的服务
+      - 风险管理服务                       # 对应 packages/shared/src/product-apis/risk-data-service.ts
+      - 工单系统                          # 对应 work-order-service.ts
+
+  base_dir: ..                           # PRD 与代码相对路径基准（指向仓库根）
+  out_dir: outputs
+
+  prd_manifest:                          # 归集集合由人工给定，不自动发现（§4）
+    # 路径相对 base_dir（仓库根）。以下为占位 fixture——换成你方真实历史 PRD 即可。
+    - { path: prd-baseliner/examples/prd/异常事件管理-v3.1.md, version: v3.1, status: 作数 }
+    - { path: prd-baseliner/examples/prd/异常事件管理-v3.0.md, version: v3.0, status: 已被取代 }
+
+  runtime_facts:                         # 最终真相，可选但强烈建议
+    # 栈适配：样例产线为 Prisma/MySQL，无 Kafka
+    ddl: ../apps/server/prisma/schema.prisma      # schema-dumper 首选事实源
+    topics: null                                  # 样例产线无消息中间件 → topic-scanner 预期空集
+    registry: ../docs/product-apis                # 各业务线 OpenAPI 目录（接口事实源）
+
+  ontology:
+    version: null
+    export: null                         # Neo4j 概念/关系导出，供语义对齐（M3）
+
+  schema_def: ../docs/refs/基线PRD章节Schema.md    # 输出契约
+  maturity_rules: null                   # 缺省用内置规则
