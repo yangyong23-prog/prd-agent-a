@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+.codegraph
+
+# Build outputs
+dist/
+build/
+*-web/
+*-server/
+apps/web/*-web/
+coverage/
+test-results/
+playwright-report/
+.turbo/
+.vite/
+*.tsbuildinfo
+
+# Environment files
+.env
+!.env.*
+!.env.example
+!.env.*.example
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local tool state
+.playwright-mcp/
+.codex/
+
+# Apifox token (must NOT be committed)
+.apifox-token
+*.apifox-token
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/

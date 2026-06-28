@@ -1,0 +1,41 @@
+{
+  "name": "@app/web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "vue-tsc -p tsconfig.json --noEmit && vite build",
+    "dev": "vite --host 0.0.0.0",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "vue-tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@app/api-contract": "workspace:*",
+    "@app/shared": "workspace:*",
+    "@tanstack/vue-query": "^5.62.7",
+    "@vueuse/core": "^12.2.0",
+    "clsx": "^2.1.1",
+    "lucide-vue-next": "^0.468.0",
+    "meri-icon": "^1.5.7",
+    "meri-plus": "^4.1.21",
+    "pinia": "^2.3.0",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@app/eslint-config": "workspace:*",
+    "@app/tsconfig": "workspace:*",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.17.0",
+    "postcss": "^8.4.49",
+    "tailwind-merge": "^2.6.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.6",
+    "vitest": "^2.1.8",
+    "vue-tsc": "^2.2.0"
+  }
+}

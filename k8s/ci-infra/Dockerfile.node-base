@@ -1,0 +1,10 @@
+# =========================================================================
+# Node 基础镜像：供后端镜像复用，避免每次业务构建重复安装 Node/npm/pnpm
+# =========================================================================
+
+FROM harbor.meos.center/public/nginx:stable-alpine
+
+ENV PNPM_HOME=/pnpm \
+    PATH=/pnpm:$PATH
+
+RUN apk add --no-cache nodejs npm && npm install -g pnpm@9.15.4

@@ -1,0 +1,71 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${IMAGE_NAME}
+  namespace: ${K8S_NAMESPACE}
+spec:
+  selector:
+    app: ${IMAGE_NAME}
+  type: ClusterIP
+  ports:
+  - name: web
+    port: ${WEB_CONTAINER_PORT}
+    protocol: TCP
+    targetPort: ${WEB_CONTAINER_PORT}
+  - name: server
+    port: ${SERVER_CONTAINER_PORT}
+    protocol: TCP
+    targetPort: ${SERVER_CONTAINER_PORT}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${IMAGE_NAME}
+  namespace: ${K8S_NAMESPACE}
+  annotations:
+    kubesphere.io/alias-name: '${APP_ALIAS_NAME}'
+spec:
+  replicas: ${REPLICAS}
+  selector:
+    matchLabels:
+      app: ${IMAGE_NAME}
+  template:
+    metadata:
+      labels:
+        app: ${IMAGE_NAME}
+        app_kind: fullstack
+    spec:
+      imagePullSecrets:
+      - name: ${IMAGE_PULL_SECRET}
+      containers:
+      - name: ${IMAGE_NAME}
+        image: ${HARBOR_ADDR}/${HARBOR_PROJECT}/${IMAGE_NAME}:${IMAGE_TAG}
+        ports:
+        - containerPort: ${WEB_CONTAINER_PORT}
+          name: web
+          protocol: TCP
+        - containerPort: ${SERVER_CONTAINER_PORT}
+          name: server
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: HOST
+          value: "0.0.0.0"
+        - name: PORT
+          value: "${SERVER_CONTAINER_PORT}"
+        - name: CORS_ORIGIN
+          value: "${SERVER_CORS_ORIGIN}"
+        - name: TZ
+          value: "${APP_TZ}"
+        envFrom:
+        - secretRef:
+            name: ${IMAGE_NAME}-secret
+        resources:
+          limits:
+            memory: ${MEMORY_LIMIT}
+            cpu: ${CPU_LIMIT}
+          requests:
+            memory: ${MEMORY_REQUEST}
+            cpu: ${CPU_REQUEST}

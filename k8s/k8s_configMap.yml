@@ -1,0 +1,38 @@
+# =========================================================================
+# 【应用运行时配置】k8s/k8s_configMap.yml
+# 前端应用 Nginx 运行时配置
+#
+# CI/CD 自动将此文件包装为 K8s ConfigMap（键名：application.yml）
+# 挂载路径：/etc/nginx/conf.d/default.conf（Nginx 配置文件）
+#
+# 注意：前端项目通常不需要复杂的后端配置，此文件可留空或删除
+# 如不需要 ConfigMap，可直接删除本文件，流水线会自动跳过生成步骤
+# =========================================================================
+
+server:
+  port: 80
+  server_name: _
+  root: /usr/share/nginx/html
+  index: index.html
+  charset: utf-8
+  gzip:
+    enabled: true
+    types:
+      - text/plain
+      - text/css
+      - application/javascript
+      - application/json
+      - image/svg+xml
+  cache:
+    static:
+      enabled: true
+      expiry: 7d
+      types:
+        - "*.ico"
+        - "*.png"
+        - "*.jpg"
+        - "*.jpeg"
+        - "*.gif"
+        - "*.svg"
+        - "*.css"
+        - "*.js"

@@ -1,0 +1,383 @@
+name: 构建推送Harbor镜像并自动回写GitOps (sandbox-service-template)
+on:
+  push:
+    branches: [main, develop, qa]
+  workflow_dispatch:
+
+jobs:
+  build_docker:
+    runs-on: self-hosted
+    steps:
+      - name: 检出源码
+        env:
+          GIT_PAT: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          unset AUTHORIZATION HTTP_AUTHORIZATION FORGEJO_TOKEN GITHUB_TOKEN
+          git clone https://${GITHUB_REPOSITORY_OWNER}:"${GIT_PAT}"@${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}.git .
+          git checkout ${GITEA_SHA}
+          echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+          # ── 分支 → 环境标识映射 ─────────────────────────────────────────────
+          BRANCH="${GITEA_REF_NAME:-${GITHUB_REF_NAME}}"
+          case "$BRANCH" in
+            main)    DEPLOY_ENV=prod ;;
+            develop) DEPLOY_ENV=dev  ;;
+            qa)      DEPLOY_ENV=qa   ;;
+            *)       DEPLOY_ENV=dev  ;;
+          esac
+          echo "DEPLOY_ENV=${DEPLOY_ENV}" >> $GITHUB_ENV
+          echo "✅ 当前分支: ${BRANCH}  →  部署环境: ${DEPLOY_ENV}"
+
+          PROJECT_NAME="$(node -p "require('./package.json').name")"
+          echo "PROJECT_NAME=${PROJECT_NAME}" >> $GITHUB_ENV
+          echo "IMAGE_NAME=${PROJECT_NAME}" >> $GITHUB_ENV
+          echo "WEB_ARTIFACT_DIR=${PROJECT_NAME}-web" >> $GITHUB_ENV
+          echo "SERVER_ARTIFACT_DIR=${PROJECT_NAME}-server" >> $GITHUB_ENV
+          echo "WEB_SERVICE_NAME=${PROJECT_NAME}-web" >> $GITHUB_ENV
+          echo "SERVER_SERVICE_NAME=${PROJECT_NAME}-server" >> $GITHUB_ENV
+          echo "✅ 当前项目: ${PROJECT_NAME}"
+
+          # 验证核心配置文件存在
+          if [ ! -f "k8s/k8s_env_config.yml" ]; then
+            echo "❌ 错误：项目内缺少 k8s/k8s_env_config.yml 配置文件！"
+            exit 1
+          fi
+          if [ ! -f "k8s/ci-infra/templates/k8s_env_config_template.yml" ]; then
+            echo "❌ 错误：项目内缺少 k8s_env_config_template.yml 模板文件！"
+            exit 1
+          fi
+
+      - name: 准备 pnpm 工具链
+        run: |
+          echo "👉 检测 pnpm / corepack"
+          if command -v pnpm >/dev/null 2>&1; then
+            echo "✅ 已存在 pnpm: $(pnpm -v)"
+          else
+            echo "👉 pnpm 不存在，尝试通过 corepack 或 npm 安装"
+            if command -v corepack >/dev/null 2>&1; then
+              echo "   使用 corepack 启用 pnpm@9.15.4"
+              corepack enable
+              corepack prepare pnpm@9.15.4 --activate
+            else
+              echo "   corepack 不存在，使用 npm 全局安装 pnpm@9.15.4"
+              npm install -g pnpm@9.15.4
+            fi
+          fi
+          echo "✅ pnpm 版本: $(pnpm -v)"
+
+      - name: 安装依赖 (pnpm install)
+        run: |
+          echo "👉 使用 pnpm workspace 安装依赖（含 turbo / vite 等）"
+          pnpm install --frozen-lockfile
+          echo "✅ 依赖安装完成"
+
+      - name: 前端打包 (pnpm --filter @app/web build)
+        env:
+          # 网关配置在前端编译期就需要注入，vite.config.ts 通过 define 把 __GW_BASE_URL__ 等常量烘成静态字符串
+          # 若此步骤无这些 env 变量，网关 URL 会编译为空字符串，运行时点击网关按鈕会抛出 "GW_BASE_URL is required"
+          GW_BASE_URL: ${{ secrets.GW_BASE_URL }}
+          GW_TOKEN: ${{ secrets.GW_TOKEN }}
+          GW_GROUP_CODE: ${{ secrets.GW_GROUP_CODE }}
+          GW_PROJECT_ID: ${{ secrets.GW_PROJECT_ID }}
+        run: |
+          echo "👉 Monorepo 模式：仅构建前端子包 @app/web"
+          pnpm --filter @app/web build
+
+          # apps/web/vite.config.ts 中 build.outDir = <package.json.name>-web
+          ARTIFACT_DIR="apps/web/${WEB_ARTIFACT_DIR}"
+          if [ ! -f "${ARTIFACT_DIR}/index.html" ]; then
+            echo "❌ 未找到前端产物 ${ARTIFACT_DIR}/index.html，请检查 vite build 是否成功"
+            exit 1
+          fi
+          echo "✅ 前端产物目录: $ARTIFACT_DIR"
+
+          echo "👉 将 $ARTIFACT_DIR 同步到仓库根 ${WEB_ARTIFACT_DIR}/"
+          rm -rf "${WEB_ARTIFACT_DIR}"
+          mkdir -p "${WEB_ARTIFACT_DIR}"
+          cp -R "$ARTIFACT_DIR"/. "${WEB_ARTIFACT_DIR}/"
+          echo "✅ 前端打包产物（${WEB_ARTIFACT_DIR}/）："
+          ls -la "${WEB_ARTIFACT_DIR}/"
+
+      - name: 后端构建校验 (pnpm --filter @app/server build)
+        run: |
+          echo "👉 Monorepo 模式：构建后端子包 @app/server"
+          pnpm --filter @app/server build
+          echo "👉 将后端运行上下文同步到仓库根 ${SERVER_ARTIFACT_DIR}/"
+          rm -rf "${SERVER_ARTIFACT_DIR}"
+          mkdir -p "${SERVER_ARTIFACT_DIR}/apps" "${SERVER_ARTIFACT_DIR}/packages"
+          cp package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json "${SERVER_ARTIFACT_DIR}/"
+          cp -R apps/server "${SERVER_ARTIFACT_DIR}/apps/server"
+          cp -R packages/api-contract "${SERVER_ARTIFACT_DIR}/packages/api-contract"
+          cp -R packages/config "${SERVER_ARTIFACT_DIR}/packages/config"
+          cp -R packages/shared "${SERVER_ARTIFACT_DIR}/packages/shared"
+          cp -R packages/tsconfig "${SERVER_ARTIFACT_DIR}/packages/tsconfig"
+          cp -R packages/eslint-config "${SERVER_ARTIFACT_DIR}/packages/eslint-config"
+          echo "✅ 后端构建校验完成"
+
+      # =========================================================================
+      # 🚀 2. 镜像构建：Dagger 沙箱驱动
+      # =========================================================================
+      - name: 安装 Dagger SDK 依赖
+        run: |
+          pip3 install "dagger-io==0.21.4" anyio
+
+      - name: 运行 Dagger 脚本推送 Harbor
+        env:
+          HARBOR_USER: ${{ secrets.HARBOR_USER }}
+          HARBOR_PWD: ${{ secrets.HARBOR_PWD }}
+        run: |
+          echo "==== 💾 加载 env 文件变量 ===="
+          set -a
+          source k8s/k8s_env_config.yml
+          [ -f "k8s/env/${DEPLOY_ENV}.yml" ] && source k8s/env/${DEPLOY_ENV}.yml
+          source k8s/ci-infra/templates/k8s_env_config_template.yml
+          export PROJECT_NAME="${PROJECT_NAME:-$(node -p "require('./package.json').name")}"
+          export IMAGE_NAME="${PROJECT_NAME}"
+          export WEB_ARTIFACT_DIR="${PROJECT_NAME}-web"
+          export SERVER_ARTIFACT_DIR="${PROJECT_NAME}-server"
+          export WEB_SERVICE_NAME="${PROJECT_NAME}-web"
+          export SERVER_SERVICE_NAME="${PROJECT_NAME}-server"
+          set +a
+
+          echo "==== 🚀 安装 Dagger ===="
+          curl -L https://dl.dagger.io/dagger/install.sh | DAGGER_VERSION=${DAGGER_VERSION} BIN_DIR=. sh
+          ./dagger version
+
+          echo "==== 注入变量 ===="
+          export HARBOR_ADDR="${HARBOR_ADDR}"
+          export HARBOR_PROJECT="${HARBOR_PROJECT}"
+          export IMAGE_NAME="${IMAGE_NAME}"
+          export WEB_ARTIFACT_DIR="${WEB_ARTIFACT_DIR}"
+          export SERVER_ARTIFACT_DIR="${SERVER_ARTIFACT_DIR}"
+          export GITEA_REF_NAME="${GITEA_REF_NAME}"
+          export SHORT_SHA="${SHORT_SHA}"
+          export VERSION_TAG="${VERSION_TAG}"
+
+          # ★ 只在这里生成一次 IMAGE_TAG ★
+          SHA8="${SHORT_SHA:0:8}"
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          VERSION="${VERSION_TAG:-${GITEA_REF_NAME}}"
+          IMAGE_TAG="${VERSION}-${SHA8:-no-sha}-${TIMESTAMP}"
+          echo "🏷️ 本次镜像 Tag: ${IMAGE_TAG}"
+
+          # ★ 保存到 GITHUB_ENV（跨 step 可靠共享）★
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          echo "💾 镜像 Tag 已保存到 GITHUB_ENV"
+
+          # ★ 同时 export 给当前 step 内的子进程（dagger/python）★
+          export IMAGE_TAG="${IMAGE_TAG}"
+
+          echo "==== 执行 Python 构建单体前后端镜像 ===="
+          ./dagger run python3 k8s/ci-infra/scripts/build_dagger.py
+
+      # =========================================================================
+      #  3. GitOps 自动回写（只读取，不生成）
+      # =========================================================================
+      - name: 跨仓库自动回写配置 (GitOps 联动)
+        env:
+          GITEA_TOKEN: ${{ secrets.CONFIG_REPO_TOKEN }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          # 运行时环境变量：注入到 K8s Secret，与 SECRET_KEYS 保持一致
+          GW_BASE_URL: ${{ secrets.GW_BASE_URL }}
+          GW_TOKEN: ${{ secrets.GW_TOKEN }}
+          GW_GROUP_CODE: ${{ secrets.GW_GROUP_CODE }}
+          GW_PROJECT_ID: ${{ secrets.GW_PROJECT_ID }}
+          MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
+          MYSQL_PORT: ${{ secrets.MYSQL_PORT }}
+          MYSQL_USERNAME: ${{ secrets.MYSQL_USERNAME }}
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+          MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+        run: |
+          echo "==== 💾 加载 env 文件变量 ===="
+          echo "🏷️ 使用构建阶段的镜像 Tag: ${IMAGE_TAG}"
+
+          if [ -f "k8s/k8s_env_config.yml" ] && [ -f "k8s/ci-infra/templates/k8s_env_config_template.yml" ]; then
+            set -a
+            source k8s/k8s_env_config.yml
+            [ -f "k8s/env/${DEPLOY_ENV}.yml" ] && source k8s/env/${DEPLOY_ENV}.yml
+            source k8s/ci-infra/templates/k8s_env_config_template.yml
+            export PROJECT_NAME="${PROJECT_NAME:-$(node -p "require('./package.json').name")}"
+            export IMAGE_NAME="${PROJECT_NAME}"
+            export WEB_ARTIFACT_DIR="${PROJECT_NAME}-web"
+            export SERVER_ARTIFACT_DIR="${PROJECT_NAME}-server"
+            export WEB_SERVICE_NAME="${PROJECT_NAME}-web"
+            export SERVER_SERVICE_NAME="${PROJECT_NAME}-server"
+            set +a
+          else
+            echo "❌ 错误：未找到配置文件！"
+            exit 1
+          fi
+
+          # ★ 验证 ★
+          echo "==== 🔍 验证 ===="
+          echo "IMAGE_TAG    = ${IMAGE_TAG}"
+          echo "IMAGE_NAME   = ${IMAGE_NAME}"
+          echo "HARBOR_ADDR  = ${HARBOR_ADDR}"
+          echo "HARBOR_PROJECT = ${HARBOR_PROJECT}"
+
+          echo "==== 清除旧的影子目录 ===="
+          rm -rf config-folder
+
+          echo "==== 1. 拉取中央配置仓库 ===="
+          git clone https://ci-robot:${GITEA_TOKEN}@gitea.meos.center/${CONFIG_REPO_OWNER}/${CONFIG_REPO_NAME}.git config-folder
+
+          # ── 确定 sandbox-infra-config 的目标分支 ─────────────────────────────
+          # dev/qa 环境推对应同名分支，prod 环境推 main 分支
+          # ArgoCD ApplicationSet 按分支+路径匹配：dev→dev/*/dev，prod→main/*/prod
+          case "${DEPLOY_ENV}" in
+            prod) TARGET_BRANCH=main ;;
+            *)    TARGET_BRANCH="${DEPLOY_ENV}" ;;
+          esac
+          echo "TARGET_BRANCH=${TARGET_BRANCH}  →  sandbox-infra-config/${TARGET_BRANCH}"
+          cd config-folder
+          if git ls-remote --exit-code origin "${TARGET_BRANCH}" > /dev/null 2>&1; then
+            git checkout "${TARGET_BRANCH}"
+          else
+            git checkout -b "${TARGET_BRANCH}"
+          fi
+          cd ..
+          mkdir -p config-folder/${IMAGE_NAME}/${DEPLOY_ENV}
+
+          # 组件 A：Secret
+          echo "apiVersion: v1" > config-folder/${IMAGE_NAME}/${DEPLOY_ENV}/secret.yaml
+          echo "kind: Secret" >> config-folder/${IMAGE_NAME}/${DEPLOY_ENV}/secret.yaml
+          echo "metadata:" >> config-folder/${IMAGE_NAME}/${DEPLOY_ENV}/secret.yaml
+          echo "  name: ${IMAGE_NAME}-secret" >> config-folder/${IMAGE_NAME}/${DEPLOY_ENV}/secret.yaml
+          echo "  namespace: ${K8S_NAMESPACE}" >> config-folder/${IMAGE_NAME}/${DEPLOY_ENV}/secret.yaml
+          echo "type: Opaque" >> config-folder/${IMAGE_NAME}/${DEPLOY_ENV}/secret.yaml
+          echo "data:" >> config-folder/${IMAGE_NAME}/${DEPLOY_ENV}/secret.yaml
+          IFS=',' read -ra _skeys <<< "${SECRET_KEYS}"
+          for _key in "${_skeys[@]}"; do
+            _key="${_key// /}"
+            _val="${!_key}"
+            if [ -n "${_val}" ]; then
+              _b64=$(echo -n "${_val}" | base64 | tr -d '\n')
+              echo "  ${_key}: ${_b64}" >> config-folder/${IMAGE_NAME}/${DEPLOY_ENV}/secret.yaml
+            fi
+          done
+
+          # 组件 B+C：envsubst 批量渲染
+          if [ -d "k8s/ci-infra/templates" ]; then
+            echo "==== 📂 扫描 templates/ 并渲染 ===="
+            for tpl in k8s/ci-infra/templates/*.yaml k8s/ci-infra/templates/*.yml; do
+              [ -f "$tpl" ] || continue
+              fname=$(basename "$tpl")
+              envsubst < "$tpl" > "config-folder/${IMAGE_NAME}/${DEPLOY_ENV}/${fname}"
+              echo "✅ 已渲染: ${fname}"
+            done
+          fi
+
+          # 组件 D：ConfigMap
+          if [ -f "k8s/k8s_configMap.yml" ]; then
+            echo "==== 🔧 生成 ConfigMap ===="
+            CONFIG_MAP_NAME="${IMAGE_NAME}-config"
+            {
+              echo "apiVersion: v1"
+              echo "kind: ConfigMap"
+              echo "metadata:"
+              echo "  name: ${CONFIG_MAP_NAME}"
+              echo "  namespace: ${K8S_NAMESPACE}"
+              echo "data:"
+              echo "  application.yml: |"
+              while IFS= read -r line; do
+                echo "    ${line}"
+              done < k8s/k8s_configMap.yml
+            } > config-folder/${IMAGE_NAME}/${DEPLOY_ENV}/configmap.yaml
+            echo "✅ configmap.yaml 已生成"
+          fi
+
+          # 组件 E：Ingress
+          echo "==== 🌐 生成 Ingress ===="
+          python3 k8s/ci-infra/scripts/build_k8s_ingress.py
+
+          # 组件 F：PV/PVC
+          echo "==== 💾 生成 PV/PVC ===="
+          python3 k8s/ci-infra/scripts/build_k8s_pvc.py
+
+          cd config-folder
+          git config --local user.name "gitops-robot"
+          git config --local user.email "robot@meos.center"
+          git add .
+          if git diff-index --quiet HEAD; then
+            echo "ℹ️ 配置内容未发生改变，跳过推送。"
+          else
+            git commit -m "chore(${DEPLOY_ENV}): 自动同步 ${IMAGE_NAME} K8s GitOps 组件 [skip ci]"
+            git push origin "${TARGET_BRANCH}"
+          fi
+
+      - name: 等待 ArgoCD 同步完成并推送钉钉通知
+        env:
+          DINGTALK_WEBHOOK: ${{ secrets.DINGTALK_WEBHOOK }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+        run: |
+          python3 << 'PYEOF'
+          import os, sys, time, hmac, hashlib, base64, urllib.parse, urllib.request, json
+
+          webhook = os.environ.get('DINGTALK_WEBHOOK', '').strip()
+          secret  = os.environ.get('DINGTALK_SECRET', '').strip()
+
+          if not webhook or not secret:
+            print("⚠️ DINGTALK_WEBHOOK 或 DINGTALK_SECRET 未配置，跳过钉钉通知")
+            sys.exit(0)
+
+          project    = os.environ.get('PROJECT_NAME', 'unknown')
+          deploy_env = os.environ.get('DEPLOY_ENV', 'dev')
+          image_tag  = os.environ.get('IMAGE_TAG', '')
+          service_url = f"https://sandbox.meos.center/{project}-web/"
+
+          # 轮询服务健康：最多等 5 分钟，每 15 秒检查一次
+          print(f"⏳ 等待服务就绪：{service_url}")
+          max_wait, interval, elapsed, ready = 300, 15, 0, False
+          while elapsed < max_wait:
+            try:
+              req  = urllib.request.Request(service_url, headers={'User-Agent': 'CI-HealthCheck'})
+              resp = urllib.request.urlopen(req, timeout=8)
+              if resp.status < 400:
+                print(f"✅ 服务已就绪（HTTP {resp.status}），耗时 {elapsed}s")
+                ready = True
+                break
+            except Exception as e:
+              print(f"  [{elapsed}s] 尚未就绪：{e}")
+            time.sleep(interval)
+            elapsed += interval
+
+          # 计算钉钉加签
+          ts  = str(round(time.time() * 1000))
+          sts = f"{ts}\n{secret}"
+          sig = base64.b64encode(
+            hmac.new(secret.encode(), sts.encode(), digestmod=hashlib.sha256).digest()
+          ).decode()
+          sign_enc = urllib.parse.quote_plus(sig)
+          url = f"{webhook}&timestamp={ts}&sign={sign_enc}"
+
+          # 构建消息
+          if ready:
+            title = f"✅ {project} 部署完成"
+            text  = (
+              f"## ✅ {project} 已成功部署\n\n"
+              f"> **环境**：{deploy_env} &nbsp; **版本**：`{image_tag}`\n\n"
+              f"服务已就绪，点击下方链接登录：\n\n"
+              f"[🚀 打开 Web 页面]({service_url})"
+            )
+          else:
+            title = f"⏳ {project} 部署触发中"
+            text  = (
+              f"## ⏳ {project} 部署已触发\n\n"
+              f"> **环境**：{deploy_env} &nbsp; **版本**：`{image_tag}`\n\n"
+              f"镜像构建完成，ArgoCD 同步中，请稍等 1–2 分钟再访问：\n\n"
+              f"[🚀 打开 Web 页面]({service_url})"
+            )
+
+          body = json.dumps({
+            "msgtype": "markdown",
+            "markdown": {"title": title, "text": text}
+          }).encode()
+
+          req  = urllib.request.Request(url, data=body, headers={'Content-Type': 'application/json'})
+          resp = urllib.request.urlopen(req, timeout=10)
+          res  = json.loads(resp.read())
+          if res.get('errcode') == 0:
+            print("✅ 钉钉通知发送成功")
+          else:
+            print(f"⚠️ 钉钉通知发送失败：{res}")
+          PYEOF

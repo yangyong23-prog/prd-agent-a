@@ -1,0 +1,57 @@
+# =========================================================================
+# 【项目专属配置】k8s/k8s_env_config.yml
+# 只填写本项目的具体值，通用默认值由模板提供
+# 模板位置：k8s/ci-infra/templates/k8s_env_config_template.yml
+#
+# CI 加载顺序：① 先加载此文件（具体值）→ ② 再加载 env/<DEPLOY_ENV>.yml（环境覆盖）
+#              → ③ 最后加载模板（模板自动引用此处变量）
+#
+# 命名空间约定：
+#   - dev  环境（develop 分支）：persagy-ai-dev
+#   - qa   环境（qa 分支）     ：persagy-ai-qa
+#   - prod 环境（main 分支）   ：persagy-ai-prod
+#   K8S_NAMESPACE 由 env/<DEPLOY_ENV>.yml 动态覆盖，此处保留默认值
+# =========================================================================
+
+VERSION_TAG=v0.1.0
+
+# -------------------------------------------------------------------------
+# 【应用基础元数据】
+# -------------------------------------------------------------------------
+# 镜像名称默认由 CI 从根 package.json 的 name 字段注入。
+IMAGE_NAME=yushu-app
+WEB_SERVICE_NAME=yushu-app-web
+SERVER_SERVICE_NAME=yushu-app-server
+
+# 容器端口：前端 Nginx 暴露 80，后端 Fastify 暴露 3201
+WEB_CONTAINER_PORT=80
+SERVER_CONTAINER_PORT=3201
+
+# K8s 命名空间：默认命名空间，会被 env/<DEPLOY_ENV>.yml 按环境覆盖
+#   dev  → persagy-ai-dev
+#   qa   → persagy-ai-qa
+#   prod → persagy-ai-prod
+K8S_NAMESPACE=persagy-ai
+
+
+# -------------------------------------------------------------------------
+# 【Ingress 路由】
+# -------------------------------------------------------------------------
+# Ingress 命名空间：默认同 K8S_NAMESPACE，会被 env/<DEPLOY_ENV>.yml 覆盖
+INGRESS_NAMESPACE=persagy-ai
+
+# Ingress host（K8s spec.rules[].host）：三个环境共用同一域名
+INGRESS_HOST=sandbox.meos.center
+
+# Ingress 路由规则：格式为 path:serviceName:port，多个路由用逗号分隔
+#   示例（单路径）：/:sandbox-service-template:80
+#   示例（多路径）：/:sandbox-service-template:80,/api:backend-svc:8080
+INGRESS_PATHS=/yushu-app-server:yushu-app:3201,/yushu-app-web:yushu-app:80
+
+
+# -------------------------------------------------------------------------
+# 【K8s Secret 敏感凭证】
+# -------------------------------------------------------------------------
+# SECRET_KEYS 列出需要写入 K8s Secret 的变量名，逗号分隔
+# ⚠️  生产环境请通过 CI Secrets 变量注入，避免明文提交真实密码
+SECRET_KEYS=GW_BASE_URL,GW_TOKEN,GW_GROUP_CODE,GW_PROJECT_ID,MYSQL_HOST,MYSQL_PORT,MYSQL_USERNAME,MYSQL_PASSWORD,MYSQL_DATABASE

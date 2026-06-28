@@ -1,0 +1,6 @@
+spec:
+  rules:
+      http:
+        paths:
+          - backend:
+            path: /

@@ -1,0 +1,25 @@
+{
+  "name": "yushu-app",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "build": "turbo run build",
+    "db:up": "docker compose -f infra/docker/docker-compose.yml up -d",
+    "dev": "turbo run dev --parallel",
+    "dev:server": "pnpm --filter @app/server dev",
+    "dev:web": "pnpm --filter @app/web dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:all": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write .",
+    "product-apis:generate": "node scripts/generate-product-api-clients.mjs"
+  },
+  "devDependencies": {
+    "@app/eslint-config": "workspace:*",
+    "@app/tsconfig": "workspace:*",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  }
+}

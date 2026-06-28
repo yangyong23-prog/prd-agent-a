@@ -1,0 +1,4 @@
+interface:
+  display_name: "Meri Plus"
+  short_description: "Use Meri Plus components in Vue 3 apps."
+  default_prompt: "Use $meri-plus to build a Vue 3 example with public Meri Plus component APIs."

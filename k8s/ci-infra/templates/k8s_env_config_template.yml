@@ -1,0 +1,99 @@
+# =========================================================================
+# 【基础设施通用模板】k8s/ci-infra/templates/k8s_env_config_template.yml
+#
+# 加载顺序：CI 先加载 k8s/k8s_env_config.yml，再加载本文件
+#   → 本文件通过 ${VAR:-默认值} 自动引用项目文件中的具体值
+#   → 项目文件未设置的变量使用此处默认值
+#   → 项目文件已设置的变量，此处不覆盖（${VAR:-default} 语义保证）
+# =========================================================================
+
+
+# -------------------------------------------------------------------------
+# 【引用项目专属变量】来自 k8s/k8s_env_config.yml
+# 如项目文件已定义则直接使用，否则使用此处默认值
+# -------------------------------------------------------------------------
+IMAGE_NAME=${IMAGE_NAME:-yushu-app}
+WEB_ARTIFACT_DIR=${WEB_ARTIFACT_DIR:-${IMAGE_NAME}-web}
+SERVER_ARTIFACT_DIR=${SERVER_ARTIFACT_DIR:-${IMAGE_NAME}-server}
+WEB_SERVICE_NAME=${WEB_SERVICE_NAME:-${IMAGE_NAME}-web}
+SERVER_SERVICE_NAME=${SERVER_SERVICE_NAME:-${IMAGE_NAME}-server}
+WEB_CONTAINER_PORT=${WEB_CONTAINER_PORT:-80}
+SERVER_CONTAINER_PORT=${SERVER_CONTAINER_PORT:-3201}
+K8S_NAMESPACE=${K8S_NAMESPACE:-default}
+
+# 版本号前缀：默认使用分支名，可在 k8s_env_config.yml 中覆盖
+# 示例：main, v1.0.0, v2.1.0-beta1
+# 最终镜像标签格式：VERSION_TAG-<sha8位>-<时间戳>
+VERSION_TAG=${VERSION_TAG:-${GITEA_REF_NAME:-${GITHUB_REF_NAME:-main}}}
+
+
+# -------------------------------------------------------------------------
+# 【Deployment 运行时配置】前端 Nginx 运行时
+# -------------------------------------------------------------------------
+REPLICAS=${REPLICAS:-2}
+APP_ALIAS_NAME=${APP_ALIAS_NAME:-${IMAGE_NAME}}
+APP_TZ=${APP_TZ:-Asia/Shanghai}
+IMAGE_PULL_SECRET=${IMAGE_PULL_SECRET:-harbor-secret}
+MEMORY_LIMIT=${MEMORY_LIMIT:-768Mi}
+MEMORY_REQUEST=${MEMORY_REQUEST:-192Mi}
+CPU_LIMIT=${CPU_LIMIT:-500m}
+CPU_REQUEST=${CPU_REQUEST:-100m}
+SERVER_CORS_ORIGIN=${SERVER_CORS_ORIGIN:-*}
+
+
+# -------------------------------------------------------------------------
+# 【PV/PVC 存储配置】NFS_SERVER 留空则跳过 PV/PVC 生成
+# -------------------------------------------------------------------------
+NFS_SERVER=${NFS_SERVER:-}
+NFS_PATH=${NFS_PATH:-}
+STORAGE_SIZE=${STORAGE_SIZE:-30Gi}
+STORAGE_CLASS_NAME=${STORAGE_CLASS_NAME:-nfs-client}
+PV_NAME=${PV_NAME:-}
+PVC_NAME=${PVC_NAME:-}
+
+
+# -------------------------------------------------------------------------
+# 【基础设施底座】固定配置，全平台共用
+# -------------------------------------------------------------------------
+HARBOR_ADDR=${HARBOR_ADDR:-harbor.meos.center}
+HARBOR_PROJECT=${HARBOR_PROJECT:-public}
+DAGGER_VERSION=${DAGGER_VERSION:-0.21.4}
+
+
+# -------------------------------------------------------------------------
+# 【GitOps 中央配置仓库】
+# -------------------------------------------------------------------------
+CONFIG_REPO_OWNER=${CONFIG_REPO_OWNER:-sandbox}
+CONFIG_REPO_NAME=${CONFIG_REPO_NAME:-sandbox-infra-config}
+
+# -------------------------------------------------------------------------
+# 【Ingress 路由配置】基于项目变量派生，未设置时自动生成
+# -------------------------------------------------------------------------
+# Ingress 资源名称（默认：<IMAGE_NAME>-ingress）
+INGRESS_NAME=${INGRESS_NAME:-${IMAGE_NAME}-ingress}
+
+# 对外域名（默认：IMAGE_NAME）
+INGRESS_HOST=${INGRESS_HOST:-${IMAGE_NAME}}
+
+# Ingress 命名空间（默认：同 K8S_NAMESPACE）
+INGRESS_NAMESPACE=${INGRESS_NAMESPACE:-${K8S_NAMESPACE}}
+
+INGRESS_CLASS_NAME=${INGRESS_CLASS_NAME:-nginx}
+INGRESS_TLS_SECRET=${INGRESS_TLS_SECRET:-}
+
+# 路由路径（默认：/<IMAGE_NAME>-server 和 /<IMAGE_NAME>-web 指向同一个 Service 的不同端口）
+INGRESS_PATHS=${INGRESS_PATHS:-/${SERVER_SERVICE_NAME}:${IMAGE_NAME}:${SERVER_CONTAINER_PORT},/${WEB_SERVICE_NAME}:${IMAGE_NAME}:${WEB_CONTAINER_PORT}}
+
+INGRESS_PROXY_BODY_SIZE=${INGRESS_PROXY_BODY_SIZE:-1024M}
+INGRESS_CLIENT_BODY_BUFFER_SIZE=${INGRESS_CLIENT_BODY_BUFFER_SIZE:-1024M}
+INGRESS_PROXY_CONNECT_TIMEOUT=${INGRESS_PROXY_CONNECT_TIMEOUT:-600}
+INGRESS_PROXY_READ_TIMEOUT=${INGRESS_PROXY_READ_TIMEOUT:-600}
+INGRESS_PROXY_SEND_TIMEOUT=${INGRESS_PROXY_SEND_TIMEOUT:-50000}
+INGRESS_CORS_ALLOW_ORIGIN=${INGRESS_CORS_ALLOW_ORIGIN:-*}
+INGRESS_CORS_ALLOW_METHODS=${INGRESS_CORS_ALLOW_METHODS:-PUT,GET,POST,OPTIONS,DELETE,PATCH}
+
+
+# -------------------------------------------------------------------------
+# 【K8s Secret 敏感凭证】
+# -------------------------------------------------------------------------
+SECRET_KEYS=${SECRET_KEYS:-}

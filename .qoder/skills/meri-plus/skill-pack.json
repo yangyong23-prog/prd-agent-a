@@ -1,0 +1,7 @@
+{
+  "name": "meri-plus",
+  "label": "Meri Plus",
+  "repo": "https://e.coding.net/persagy2021/zig-web/meri-plus-skill.git",
+  "branch": "master",
+  "installMode": "self"
+}
