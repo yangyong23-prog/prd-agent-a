@@ -91,8 +91,15 @@ prd-baseliner/
 **验证**（对标样例 节5接口 / 节6数据 / 节7枚举值）：跑样例产线代码，产出真实的接口契约、
 物理表结构、枚举真实取值，三者各带 commit、可复现。**这一步单独就有交付价值**。
 
-### M2 · PRD 解析 + 漂移检测
-**做**：
+### M2 · PRD 解析 + 漂移检测　✅ 已完成（核心逻辑）
+**实测结果**（用 `examples/prd` 占位 fixture v3.0/v3.1）：`prd-parse` 切 10 claims、按标题分类
+（背景/流程/规则/功能/接口/数据/枚举）、识别架构占位「A程序」与空节；`drift` 产 3 项——
+2 条文档历史漂移（流程、问题来源跨版本不一致）+ 1 条文档vs代码（接口节空但代码有 380 端点）；
+`route` 生成意图层节（原文不改写、待PM确认）+ 3 条 PM 队列（A程序绑定、问题来源数量自相矛盾、
+中文取值↔代码常量语义对齐）。中文术语↔代码常量的值级映射按设计**不在此硬判**，交 PM/本体（M3）。
+测试见 `tests/test_m2.py`。`dep-extractor`/`topic-scanner` 仍待做。
+
+**原计划**：
 - `prd-parse`：历史 PRD markdown 切节成 `Claim`，按 kind 初分类（标题层级 + 关键词/LLM）。
 - `drift.detect_vs_facts`：接口/数据/枚举类 claim 与 factstore 比对 → `DriftItem(文档vs代码)`。
 - `drift.detect_vs_prd`：跨版本 claim 相似匹配（embedding，§8）→ `DriftItem(文档历史漂移)`。

@@ -68,27 +68,29 @@ class Pipeline:
                 # 尚未实现的抽取器：跳过但不静默吞掉（§4 不静默猜测）
                 print(f"[skip] {extractor.name} 未实现（里程碑待办）")
 
-        # 4. PRD 解析
+        # 4. PRD 解析（解析全部版本：历史漂移需要被取代版参与对照）
         parser = PrdParser()
-        claims = []
+        all_claims: list = []
+        claims: list = []  # 仅'作数'版，用于事实对照与组装
         for doc in prd_docs:
-            if doc.status == "作数" and doc.exists:
-                try:
-                    claims += parser.parse(
-                        doc.path, source_prd=doc.path, source_version=doc.version
-                    )
-                except NotImplementedError:
-                    print("[skip] prd-parse 未实现（M2）")
-                    break
+            if not doc.exists:
+                continue
+            parsed = parser.parse(
+                doc.path, source_prd=doc.path, source_version=doc.version, base_dir=cfg.base_dir
+            )
+            all_claims += parsed
+            if doc.status == "作数":
+                claims += parsed
+        if all_claims:
+            print(f"[ok]   prd-parse: {len(all_claims)} claims（作数 {len(claims)}）")
 
         # 5. 漂移检测（确定性 diff，reason 之前）
         detector = DriftDetector()
         drifts = []
-        try:
-            drifts += detector.detect_vs_facts(claims, self.factstore)
-            drifts += detector.detect_vs_prd(claims)
-        except NotImplementedError:
-            print("[skip] drift 未实现（M2）")
+        drifts += detector.detect_vs_prd(all_claims)          # 跨版本历史漂移
+        drifts += detector.detect_vs_facts(claims, self.factstore)  # 文档vs代码
+        if drifts:
+            print(f"[ok]   drift: {len(drifts)} 项")
 
         # 6/7. 路由+组装（内部按需调用 reasoner）
         header = DocumentHeader(

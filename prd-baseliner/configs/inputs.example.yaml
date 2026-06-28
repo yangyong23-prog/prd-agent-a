@@ -14,9 +14,9 @@ inputs:
   out_dir: outputs
 
   prd_manifest:                          # 归集集合由人工给定，不自动发现（§4）
-    # - { path: ./prd/异常事件管理.md, version: v3.1, status: 作数 }
-    # - { path: ./prd/异常事件_3.1.md, version: '-', status: 已被取代 }
-    []
+    # 路径相对 base_dir（仓库根）。以下为占位 fixture——换成你方真实历史 PRD 即可。
+    - { path: prd-baseliner/examples/prd/异常事件管理-v3.1.md, version: v3.1, status: 作数 }
+    - { path: prd-baseliner/examples/prd/异常事件管理-v3.0.md, version: v3.0, status: 已被取代 }
 
   runtime_facts:                         # 最终真相，可选但强烈建议
     # 栈适配：样例产线为 Prisma/MySQL，无 Kafka

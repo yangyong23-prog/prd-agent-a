@@ -68,9 +68,12 @@ python -m prd_baseliner.cli run --config configs/inputs.yaml
 枚举节含 `workType: PLAN_MAINTENANCE/SUBSCRIBER_REPORT/…`（样例 §7「问题来源」真实取值）。
 
 - ✅ M1：`schema-dumper` / `openapi-extractor` / `enum-scanner` / `route` 实建层反填 / `render` 正文范式
-- ⬜ M2：`prd_parse` 切节 + `drift` 双路 diff + 实建层 vs PRD 对照
+- ✅ M2：`prd_parse` 切节分类 + `drift` 双路 diff（历史漂移 / 文档vs代码）+ 意图层节（不改写）+ PM 队列
 - ⬜ M3：`ClaudeReasoner` 意图层判定（build_status/nature/语义），意图层只标不改
 - ⬜ M4：组装对标样例的完整章节实例 + 两张清单
 
-`dep-extractor`/`topic-scanner` 为 M2（本样例无 Kafka，topic-scanner 预期空集）。
+M2 实测（用 `examples/prd` 占位 fixture，换成真实历史 PRD 即可）：10 claims → 3 drifts
+（流程/枚举历史漂移、接口节空但代码有 380 端点）+ 3 queue（A程序绑定、问题来源「共10种实列7项」、
+中文取值↔代码常量对齐）。意图层节原文逐字保留、标 `待PM确认`、`build_status` 不臆断。
+`dep-extractor`/`topic-scanner` 仍待做（本样例无 Kafka，topic-scanner 预期空集）。
 详见 `docs/IMPLEMENTATION-PLAN.md`。
