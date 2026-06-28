@@ -69,8 +69,13 @@ python -m prd_baseliner.cli run --config configs/inputs.yaml
 
 - ✅ M1：`schema-dumper` / `openapi-extractor` / `enum-scanner` / `route` 实建层反填 / `render` 正文范式
 - ✅ M2：`prd_parse` 切节分类 + `drift` 双路 diff（历史漂移 / 文档vs代码）+ 意图层节（不改写）+ PM 队列
-- ⬜ M3：`ClaudeReasoner` 意图层判定（build_status/nature/语义），意图层只标不改
+- ✅ M3：推理层判定 `build_status`/`nature`（`HeuristicReasoner` 默认无 key 可跑；`ClaudeReasoner` LLM 路径），意图层只标不改
 - ⬜ M4：组装对标样例的完整章节实例 + 两张清单
+
+M3 在真实 PRD 上实测：规则章节含「目前未实现/后续逻辑」→ 自动判 `build_status=规划中` +
+入队「需对照基线代码核实」；「列表字段展示」含「人工修改权重高于计算规则」→ 判 `nature=混合`
+入队 PM 决策；描述性节默认「按代码更新（PM 轻确认）」不阻塞。推理层只写元数据与队列，**正文逐字不改**。
+`--reasoner heuristic|claude|noop` 可切换（接口同一，route 不感知差异）。
 
 M2 实测（用 `examples/prd` 占位 fixture，换成真实历史 PRD 即可）：10 claims → 3 drifts
 （流程/枚举历史漂移、接口节空但代码有 380 端点）+ 3 queue（A程序绑定、问题来源「共10种实列7项」、

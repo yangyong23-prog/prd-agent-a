@@ -22,6 +22,7 @@ from ..models.schema import (
     DriftItem,
     Kind,
     Layer,
+    Nature,
     Provenance,
     QueueItem,
     ReviewState,
@@ -33,6 +34,8 @@ from ..reason.base import Reasoner
 from . import render
 
 _INTENT_KINDS = {Kind.背景, Kind.流程, Kind.规则, Kind.功能, Kind.依赖}
+# 行为意图节：可被代码核实做漂移对照，且区分描述性/规范性（Schema §六）。
+_BEHAVIORAL_KINDS = {Kind.流程, Kind.规则, Kind.功能}
 _KIND_TO_FACT = {Kind.接口: FactKind.接口, Kind.数据: FactKind.数据, Kind.枚举: FactKind.枚举}
 
 
@@ -71,13 +74,17 @@ class Assembler:
             sections.append(self._enum_section(pl, service, fs, commit))
 
         # —— 意图层（M2，正文不改写）——
+        intent_pairs: list[tuple[Section, Claim]] = []
         for c in claims:
             if c.kind_guess in _INTENT_KINDS and not c.is_empty:  # 跳过空容器章节
-                sections.append(self._intent_section(pl, c))
+                s = self._intent_section(pl, c)
+                sections.append(s)
+                intent_pairs.append((s, c))
 
         # —— 漂移挂载 + PM 队列 ——
         self._attach_drifts(sections, drifts)
         queue = self._build_queue(claims, facts)
+        queue += self._judge_intent(intent_pairs)  # M3：推理层判 build_status/nature
         self._attach_queue(sections, queue)
 
         for s in sections:
@@ -158,6 +165,48 @@ class Assembler:
         return None
 
     # ------------------------------------------------------------------ #
+    def _judge_intent(self, pairs: list[tuple[Section, Claim]]) -> list[QueueItem]:
+        """M3：对行为意图节调推理层判 build_status/nature。
+
+        硬约束：只写元数据与队列，**不改正文**；意图层修正一律走 PM（§2.3/§2.6）。
+        - build_status≠已实现（含'目前未实现'等）→ 队列'描述性过期'，标'需对照基线代码核实'。
+        - nature=规范性/混合 或 置信度低 → 队列'规范性意图'，PM 裁决。
+        - 描述性且高置信 → 默认'按代码更新（PM 轻确认）'，不强制入队。
+        """
+        out: list[QueueItem] = []
+        for s, c in pairs:
+            if c.kind_guess not in _BEHAVIORAL_KINDS:
+                s.build_status = BuildStatus.已实现  # 背景/依赖：默认已实现（待PM轻确认）
+                continue
+
+            bs = self.reasoner.judge_build_status(c)
+            s.build_status = bs.build_status  # 临时判定；review_state=待PM确认 已表明未定
+            if bs.build_status != BuildStatus.已实现:
+                q = QueueItem(
+                    queue_id=self._qid(), section_id=s.section_id, type="描述性过期",
+                    question=f"节「{c.heading}」含未建成/历史标注（判 {bs.build_status.value}），"
+                             f"需对照基线代码核实是否已建成（建成→按代码更新；未建成→保留并打标签、不入RAG）",
+                    options=["按代码更新", "保留规划中并打标签", "从基线PRD剔除"],
+                    evidence=bs.evidence or c.evidence,
+                )
+                out.append(q)
+                s.queue.append(q.queue_id)
+
+            nat, conf = self.reasoner.judge_nature(c)
+            s.nature = nat
+            # 描述性默认'按代码更新（PM 轻确认）'，不入阻塞队列；仅规范性/混合走 PM（§2.6）。
+            if nat in (Nature.规范性, Nature.混合):
+                q = QueueItem(
+                    queue_id=self._qid(), section_id=s.section_id, type="规范性意图",
+                    question=f"节「{c.heading}」判为 {nat.value}（置信度 {conf:.2f}）：规范性意图代码自证不了"
+                             f"'该不该如此'，需 PM 确认是否为预期",
+                    options=["确认为预期", "按代码更新", "修订为…"],
+                    evidence=c.evidence,
+                )
+                out.append(q)
+                s.queue.append(q.queue_id)
+        return out
+
     def _build_queue(self, claims: list[Claim], facts: FactStore) -> list[QueueItem]:
         queue: list[QueueItem] = []
 

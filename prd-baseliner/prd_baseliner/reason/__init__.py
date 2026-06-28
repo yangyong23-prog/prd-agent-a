@@ -8,4 +8,5 @@ from .base import (  # noqa: F401
     Suggestion,
 )
 from .noop_reasoner import NoopReasoner  # noqa: F401
+from .heuristic_reasoner import HeuristicReasoner  # noqa: F401
 from .claude_reasoner import ClaudeReasoner  # noqa: F401

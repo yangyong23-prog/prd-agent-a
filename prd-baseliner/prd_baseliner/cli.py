@@ -36,7 +36,10 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     run_p = sub.add_parser("run", help="跑完整流水线")
     run_p.add_argument("--config", required=True, help="输入契约 YAML（见 §4）")
-    run_p.add_argument("--reasoner", default="noop", choices=["noop", "claude"], help="推理层实现")
+    run_p.add_argument(
+        "--reasoner", default="heuristic", choices=["heuristic", "noop", "claude"],
+        help="推理层实现：heuristic（默认，确定性无 key）/ claude（LLM，需 SDK+key）/ noop",
+    )
 
     args = parser.parse_args(argv)
     if args.cmd == "run":
@@ -46,6 +49,10 @@ def main(argv: list[str] | None = None) -> int:
             from .reason.claude_reasoner import ClaudeReasoner
 
             reasoner = ClaudeReasoner()
+        elif args.reasoner == "heuristic":
+            from .reason.heuristic_reasoner import HeuristicReasoner
+
+            reasoner = HeuristicReasoner()
         Pipeline(cfg, reasoner=reasoner).run()
     return 0
 

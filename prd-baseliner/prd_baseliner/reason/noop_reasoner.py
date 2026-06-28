@@ -22,7 +22,7 @@ class NoopReasoner(Reasoner):
     def classify_divergence(self, fact: Fact | None, claim: Claim, evidence: str) -> Suggestion:
         return Suggestion(bucket="判定", confidence=0.0, rationale="noop：默认转 PM", evidence=evidence)
 
-    def judge_build_status(self, claim: Claim, fact: Fact | None) -> BuildStatusSuggestion:
+    def judge_build_status(self, claim: Claim, fact: Fact | None = None) -> BuildStatusSuggestion:
         return BuildStatusSuggestion(BuildStatus.规划中, confidence=0.0, rationale="noop：待核实")
 
     def judge_nature(self, claim: Claim) -> tuple[Nature, float]:

@@ -82,11 +82,10 @@ def test_intent_section_not_rewritten_and_queue_built():
     sections, drifts, queue = Assembler(NoopReasoner()).assemble(
         header=header, claims=claims, facts=facts, drifts=[]
     )
-    # 意图层节：原文逐字保留（含'风控策略'原句），且标待PM确认、build_status 不臆断
+    # 意图层节：原文逐字保留（含'风控策略'原句），且标待PM确认
     intent = [s for s in sections if s.layer == Layer.意图层]
     bg = next(s for s in intent if s.kind == Kind.背景)
     assert "风控策略" in bg.body and bg.review_state == ReviewState.待PM确认
-    assert bg.build_status is None
     # 队列含架构占位绑定 + 枚举数量自相矛盾
     qtypes = {q.type for q in queue}
     assert "规范性意图" in qtypes  # A程序 绑定
